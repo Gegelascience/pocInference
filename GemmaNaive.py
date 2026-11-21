@@ -2,9 +2,8 @@ import json
 import time
 from CacheKV import KVCache
 import numpy as np
-from safetensors import safe_open
 import sentencepiece as spm
-from transcob16f import load_safetensors_bf16_to_fp32
+from utils import load_safetensors_bf16_to_fp32
 
 
 class Gemma3Numpy:
@@ -18,12 +17,7 @@ class Gemma3Numpy:
     self.sp.load(f"{model_dir}/tokenizer.model")
 
     # 2. Chargement des poids en float32 via safetensors (sans PyTorch)
-    """self.weights = {}
-    with safe_open(
-        f"{model_dir}/model.safetensors", framework="np", device="cpu"
-    ) as f:
-      for k in f.keys():
-        self.weights[k] = f.get_tensor(k).astype(np.float32)"""
+    print("Chargement des poids...")
 
     self.weights = load_safetensors_bf16_to_fp32(
         f"{model_dir}/model.safetensors"

@@ -11,4 +11,6 @@ if __name__ == "__main__":
     #model.generate("Quelle est la capitale de la France ?")
 
     model = Gemma3NumpyFast(modelPath)
-    model.generate("Explique en deux phrases comment fonctionne un avion.")
+    #model.generate("Quelle est la capitale de la France ?")
+
+    model.chat()

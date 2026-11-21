@@ -4,7 +4,7 @@ from CacheKV import KVCache
 from GemmaTokener import Gemma3Tokenizer
 import numpy as np
 
-from transcob16f import load_safetensors_bf16_to_fp32
+from utils import StreamDecoder, load_safetensors_bf16_to_fp32, sample_token
 
 
 class Gemma3NumpyFast:
@@ -13,8 +13,6 @@ class Gemma3NumpyFast:
     with open(f"{model_dir}/config.json", "r") as f:
       self.cfg = json.load(f)
 
-    #self.sp = spm.SentencePieceProcessor()
-    #self.sp.load(f"{model_dir}/tokenizer.model")
     self.tokenizer = Gemma3Tokenizer(f"{model_dir}/tokenizer.json")
 
     print("Chargement des poids...")
@@ -70,11 +68,17 @@ class Gemma3NumpyFast:
     start_pos = cache.seq_len  # Position actuelle lue directement depuis le cache
 
     h = self.weights["model.embed_tokens.weight"][token_ids] * np.sqrt(self.dim)
-    mask = (
-        np.triu(np.full((seq_len, seq_len), -1e9, dtype=np.float32), k=1)
-        if seq_len > 1
-        else None
-    )
+
+    mask = None
+    if seq_len > 1:
+      # Partie gauche (tokens déjà en cache) : 0.0 (tout est visible)
+      past_mask = np.zeros((seq_len, start_pos), dtype=np.float32)
+      # Partie droite (nouveaux tokens) : masque triangulaire supérieur à -1e9
+      curr_mask = np.triu(
+          np.full((seq_len, seq_len), -1e9, dtype=np.float32), k=1
+      )
+      # Concaténation -> shape (seq_len, start_pos + seq_len)
+      mask = np.concatenate([past_mask, curr_mask], axis=1)
 
     for i in range(self.n_layers):
       prefix = f"model.layers.{i}"
@@ -139,27 +143,149 @@ class Gemma3NumpyFast:
     h = self.rms_norm(h, self.weights["model.norm.weight"])
     return h[-1] @ self.weights["model.embed_tokens.weight"].T
 
-  def generate(self, prompt, max_new_tokens=60):
+  def generate(self, 
+        prompt,
+        max_new_tokens=60,
+        temperature=0.7,
+        top_k=50,
+        top_p=0.9,
+        repetition_penalty=1.1):
     formatted = (
         f"<bos><start_of_turn>user\n{prompt}<end_of_turn>\n<start_of_turn>model\n"
     )
     tokens = self.tokenizer.encode(formatted, add_bos=False)
+    all_tokens = list(tokens)  # Historique pour la pénalité de répétition
 
     # Instanciation du cache
     cache = self.create_cache(max_seq_len=len(tokens) + max_new_tokens)
 
     # Prefill
-    t0 = time.time()
+    t0 = time.perf_counter()
     logits = self.forward(tokens, cache)
-    print(f"[Prefill : {cache.seq_len} tokens en {time.time() - t0:.2f}s]")
+    print(f"[Prefill : {cache.seq_len} tokens en {time.perf_counter() - t0:.2f}s]")
 
     # Decode
+
+    # Initialisation du décodeur avec tampon UTF-8
+    stream = StreamDecoder(self.tokenizer)
+
     print("Gemma : ", end="", flush=True)
     for _ in range(max_new_tokens):
-      next_token = int(np.argmax(logits))
+      next_token = sample_token(
+          logits,
+          generated_ids=all_tokens,
+          temperature=temperature,
+          top_k=top_k,
+          top_p=top_p,
+          repetition_penalty=repetition_penalty,
+      )
+
       if next_token == self.tokenizer.eos_token_id or next_token == 106:
         break
 
-      print(self.tokenizer.decode([next_token]), end="", flush=True)
+      all_tokens.append(next_token)
+      # Affichage garanti sans caractère cassé
+      chunk = stream.push(next_token)
+      if chunk:
+        print(chunk, end="", flush=True)
+
       logits = self.forward([next_token], cache)
-    print()
+    print(stream.flush())
+
+  def chat(
+        self,
+        max_context_len=2048,
+        max_new_tokens=256,
+        temperature=0.7,
+        top_k=50,
+        top_p=0.9,
+        repetition_penalty=1.1,
+    ):
+      """Boucle de conversation interactive réutilisant le même KVCache d'un tour à l'autre."""
+      # On alloue un seul cache pour toute la durée de la conversation
+      cache = self.create_cache(max_seq_len=max_context_len)
+      all_tokens = []
+      is_first_turn = True
+
+      print(
+          f"Chat prêt (capacité : {max_context_len} tokens). Tapez 'quitter'"
+          " pour arrêter, 'reset' pour effacer la mémoire.\n"
+          + "-" * 60
+      )
+
+      while True:
+        user_input = input("\nVous : ").strip()
+        if not user_input:
+          continue
+        if user_input.lower() in ["quitter", "exit", "quit"]:
+          break
+        if user_input.lower() == "reset":
+          cache.reset()
+          all_tokens.clear()
+          is_first_turn = True
+          print("[Mémoire de conversation effacée]")
+          continue
+
+        # 1. Formatage uniquement du NOUVEAU tour (sans ré-encoder l'historique)
+        if is_first_turn:
+          turn_text = (
+              f"<bos><start_of_turn>user\n{user_input}<end_of_turn>\n"
+              "<start_of_turn>model\n"
+          )
+          is_first_turn = False
+        else:
+          # On ferme le tour précédent du modèle (<end_of_turn>\n) et on ouvre celui de l'utilisateur
+          turn_text = (
+              f"<end_of_turn>\n<start_of_turn>user\n{user_input}<end_of_turn>\n"
+              "<start_of_turn>model\n"
+          )
+
+        new_tokens = self.tokenizer.encode(turn_text, add_bos=False)
+
+        # Vérification de la place restante dans le cache
+        if cache.seq_len + len(new_tokens) + max_new_tokens > max_context_len:
+          print(
+              "\n[Attention : limite du cache atteinte, tapez 'reset' pour"
+              " recommencer une conversation.]"
+          )
+          continue
+
+        all_tokens.extend(new_tokens)
+
+        # 2. Prefill incrémental : on ne calcule QUE les tokens de la nouvelle question
+        t0 = time.perf_counter()
+        logits = self.forward(new_tokens, cache)
+        prefill_time = time.perf_counter() - t0
+
+        # 3. Génération de la réponse en streaming
+        stream = StreamDecoder(self.tokenizer)
+        print("Gemma : ", end="", flush=True)
+
+        generated_count = 0
+        for _ in range(max_new_tokens):
+          next_token = sample_token(
+              logits,
+              generated_ids=all_tokens,
+              temperature=temperature,
+              top_k=top_k,
+              top_p=top_p,
+              repetition_penalty=repetition_penalty,
+          )
+
+          if next_token == self.tokenizer.eos_token_id or next_token == 106:
+            break
+
+          all_tokens.append(next_token)
+          generated_count += 1
+
+          chunk = stream.push(next_token)
+          if chunk:
+            print(chunk, end="", flush=True)
+
+          logits = self.forward([next_token], cache)
+
+        print(stream.flush())
+        print(
+            f"   [Cache : {cache.seq_len}/{max_context_len} tokens | Prefill"
+            f" incrémental : {prefill_time:.2f}s]"
+        )
