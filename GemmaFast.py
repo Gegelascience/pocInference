@@ -2,7 +2,7 @@ import time
 from CacheKV import KVCache
 from GemmaTokener import Gemma3Tokenizer
 import numpy as np
-
+import numpy.typing as npt
 from utils import StreamDecoder, load_safetensors_bf16_to_fp32, sample_token, ModelConfig
 
 
@@ -24,7 +24,7 @@ class Gemma3NumpyFast:
     """Crée une instance de KVCache dimensionnée pour ce modèle."""
     return KVCache(self.modelConfig.n_layers, max_seq_len, self.modelConfig.n_kv_heads, self.modelConfig.head_dim)
 
-  def rms_norm(self, x, weight):
+  def rms_norm(self, x:npt.NDArray[np.float32]| npt.NDArray[np.float64], weight:npt.NDArray[np.float32]):
     norm = np.sqrt(np.mean(x**2, axis=-1, keepdims=True) + self.modelConfig.eps)
     return (x / norm) * (1.0 + weight)
 
@@ -59,7 +59,7 @@ class Gemma3NumpyFast:
     seq_len = len(token_ids)
     start_pos = cache.seq_len  # Position actuelle lue directement depuis le cache
 
-    h = self.weights["model.embed_tokens.weight"][token_ids] * np.sqrt(self.modelConfig.dim)
+    h:npt.NDArray[np.float32] = self.weights["model.embed_tokens.weight"][token_ids] * np.sqrt(self.modelConfig.dim)
 
     mask = None
     if seq_len > 1:
@@ -196,7 +196,7 @@ class Gemma3NumpyFast:
       """Boucle de conversation interactive réutilisant le même KVCache d'un tour à l'autre."""
       # On alloue un seul cache pour toute la durée de la conversation
       cache = self.create_cache(max_seq_len=max_context_len)
-      all_tokens = []
+      all_tokens:list[int] = []
       is_first_turn = True
 
       print(

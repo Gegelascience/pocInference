@@ -35,10 +35,10 @@ class Gemma3Tokenizer:
       pair = tuple(merge.split(" ")) if isinstance(merge, str) else tuple(merge)
       self.bpe_ranks[pair] = rank
 
-    self.cache = {}  # Cache pour accélérer l'encodage des mots déjà vus
+    self.cache:dict[str,list[str]] = {}  # Cache pour accélérer l'encodage des mots déjà vus
     self.eos_token_id = self.vocab.get("<eos>", 1)
 
-  def _bpe(self, word):
+  def _bpe(self, word:str):
     """Applique l'algorithme Byte-Pair Encoding sur un morceau de texte."""
     if word in self.cache:
       return self.cache[word]

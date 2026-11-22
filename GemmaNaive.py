@@ -1,4 +1,5 @@
 import numpy as np
+import numpy.typing as npt
 import sentencepiece as spm
 from utils import load_safetensors_bf16_to_fp32,ModelConfig
 
@@ -21,7 +22,7 @@ class Gemma3Numpy:
 
 
   # --- Briques mathématiques de base ---
-  def rms_norm(self, x, weight):
+  def rms_norm(self, x:npt.NDArray[np.float32] |npt.NDArray[np.float64], weight:npt.NDArray[np.float32]):
     norm = np.sqrt(np.mean(x**2, axis=-1, keepdims=True) + self.modelConfig.eps)
     # Spécificité Gemma : le poids appris est centré autour de 0, d'où le (1.0 + weight)
     return (x / norm) * (1.0 + weight)
@@ -59,7 +60,7 @@ class Gemma3Numpy:
   def forward(self, token_ids:list[int]):
     seq_len = len(token_ids)
     # 1. Embeddings + mise à l'échelle Gemma
-    h = self.weights["model.embed_tokens.weight"][token_ids] * np.sqrt(self.modelConfig.dim)
+    h:npt.NDArray[np.float32] = self.weights["model.embed_tokens.weight"][token_ids] * np.sqrt(self.modelConfig.dim)
 
     # Masque causal triangulaire
     mask = np.triu(np.full((seq_len, seq_len), -1e9, dtype=np.float32), k=1)

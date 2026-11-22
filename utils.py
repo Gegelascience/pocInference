@@ -76,7 +76,7 @@ def load_safetensors_bf16_to_fp32(filepath:str):
 
 
 def sample_token(
-    logits,
+    logits:npt.NDArray[np.float32],
     generated_ids:list[int]=[],
     temperature:float=0.7,
     top_k:int=50,
