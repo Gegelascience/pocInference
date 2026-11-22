@@ -42,7 +42,7 @@ class Gemma3NumpyFast:
     e_x = np.exp(x - np.max(x, axis=-1, keepdims=True))
     return e_x / np.sum(e_x, axis=-1, keepdims=True)
 
-  def apply_rope(self, x:npt.NDArray[np.float32]|npt.NDArray[np.float64], start_pos, theta_base):
+  def apply_rope(self, x:npt.NDArray[np.float32]|npt.NDArray[np.float64], start_pos:int, theta_base:float):
     seq_len = x.shape[0]
     half_dim = self.modelConfig.head_dim // 2
     freqs = 1.0 / (
