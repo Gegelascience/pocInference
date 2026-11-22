@@ -5,7 +5,7 @@ import re
 class Gemma3Tokenizer:
   """Tokenizer BPE pur Python lisant directement le fichier tokenizer.json de Gemma 3."""
 
-  def __init__(self, tokenizer_json_path):
+  def __init__(self, tokenizer_json_path:str):
     with open(tokenizer_json_path, "r", encoding="utf-8") as f:
       data = json.load(f)
 
@@ -74,7 +74,7 @@ class Gemma3Tokenizer:
     self.cache[word] = symbols
     return symbols
 
-  def encode(self, text, add_bos=False):
+  def encode(self, text:str, add_bos:bool=False):
     """Convertit une chaîne de caractères en liste d'IDs."""
     token_ids = [self.vocab["<bos>"]] if add_bos else []
 
@@ -103,7 +103,7 @@ class Gemma3Tokenizer:
 
   def decode(self, token_ids):
     """Reconstruit le texte à partir d'une liste d'IDs."""
-    pieces = []
+    pieces:list[str] = []
     byte_buffer = bytearray()
 
     for idx in token_ids:

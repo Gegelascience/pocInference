@@ -1,17 +1,16 @@
-import json
 import time
 from CacheKV import KVCache
 from GemmaTokener import Gemma3Tokenizer
 import numpy as np
 
-from utils import StreamDecoder, load_safetensors_bf16_to_fp32, sample_token
+from utils import StreamDecoder, load_safetensors_bf16_to_fp32, sample_token, ModelConfig
 
 
 class Gemma3NumpyFast:
 
-  def __init__(self, model_dir):
-    with open(f"{model_dir}/config.json", "r") as f:
-      self.cfg = json.load(f)
+  def __init__(self, model_dir:str):
+
+    self.modelConfig =ModelConfig(f"{model_dir}/config.json")
 
     self.tokenizer = Gemma3Tokenizer(f"{model_dir}/tokenizer.json")
 
@@ -20,20 +19,13 @@ class Gemma3NumpyFast:
         f"{model_dir}/model.safetensors"
     )
 
-    self.dim = self.cfg["hidden_size"]
-    self.n_layers = self.cfg["num_hidden_layers"]
-    self.n_heads = self.cfg["num_attention_heads"]
-    self.n_kv_heads = self.cfg["num_key_value_heads"]
-    self.head_dim = self.cfg["head_dim"]
-    self.eps = self.cfg["rms_norm_eps"]
-    self.scale = 1.0 / np.sqrt(self.cfg.get("query_pre_attn_scalar", 256))
 
-  def create_cache(self, max_seq_len=2048):
+  def create_cache(self, max_seq_len:int=2048):
     """Crée une instance de KVCache dimensionnée pour ce modèle."""
-    return KVCache(self.n_layers, max_seq_len, self.n_kv_heads, self.head_dim)
+    return KVCache(self.modelConfig.n_layers, max_seq_len, self.modelConfig.n_kv_heads, self.modelConfig.head_dim)
 
   def rms_norm(self, x, weight):
-    norm = np.sqrt(np.mean(x**2, axis=-1, keepdims=True) + self.eps)
+    norm = np.sqrt(np.mean(x**2, axis=-1, keepdims=True) + self.modelConfig.eps)
     return (x / norm) * (1.0 + weight)
 
   def gelu(self, x):
@@ -52,7 +44,7 @@ class Gemma3NumpyFast:
 
   def apply_rope(self, x, start_pos, theta_base):
     seq_len = x.shape[0]
-    half_dim = self.head_dim // 2
+    half_dim = self.modelConfig.head_dim // 2
     freqs = 1.0 / (
         theta_base ** (np.arange(0, half_dim, dtype=np.float32) / half_dim)
     )
@@ -67,7 +59,7 @@ class Gemma3NumpyFast:
     seq_len = len(token_ids)
     start_pos = cache.seq_len  # Position actuelle lue directement depuis le cache
 
-    h = self.weights["model.embed_tokens.weight"][token_ids] * np.sqrt(self.dim)
+    h = self.weights["model.embed_tokens.weight"][token_ids] * np.sqrt(self.modelConfig.dim)
 
     mask = None
     if seq_len > 1:
@@ -80,7 +72,7 @@ class Gemma3NumpyFast:
       # Concaténation -> shape (seq_len, start_pos + seq_len)
       mask = np.concatenate([past_mask, curr_mask], axis=1)
 
-    for i in range(self.n_layers):
+    for i in range(self.modelConfig.n_layers):
       prefix = f"model.layers.{i}"
 
       # 1. Projections Q, K, V
@@ -88,13 +80,13 @@ class Gemma3NumpyFast:
           h, self.weights[f"{prefix}.input_layernorm.weight"]
       )
       q = (h_norm @ self.weights[f"{prefix}.self_attn.q_proj.weight"].T).reshape(
-          seq_len, self.n_heads, self.head_dim
+          seq_len, self.modelConfig.n_heads, self.modelConfig.head_dim
       )
       k = (h_norm @ self.weights[f"{prefix}.self_attn.k_proj.weight"].T).reshape(
-          seq_len, self.n_kv_heads, self.head_dim
+          seq_len, self.modelConfig.n_kv_heads, self.modelConfig.head_dim
       )
       v = (h_norm @ self.weights[f"{prefix}.self_attn.v_proj.weight"].T).reshape(
-          seq_len, self.n_kv_heads, self.head_dim
+          seq_len, self.modelConfig.n_kv_heads, self.modelConfig.head_dim
       )
 
       # 2. QK-Norm & RoPE
@@ -109,10 +101,10 @@ class Gemma3NumpyFast:
       k, v = cache.update(i, k, v)
 
       # 4. Multi-Query Attention
-      k_rep = np.repeat(k, self.n_heads // self.n_kv_heads, axis=1)
-      v_rep = np.repeat(v, self.n_heads // self.n_kv_heads, axis=1)
+      k_rep = np.repeat(k, self.modelConfig.n_heads // self.modelConfig.n_kv_heads, axis=1)
+      v_rep = np.repeat(v, self.modelConfig.n_heads // self.modelConfig.n_kv_heads, axis=1)
 
-      scores = (q.transpose(1, 0, 2) @ k_rep.transpose(1, 2, 0)) * self.scale
+      scores = (q.transpose(1, 0, 2) @ k_rep.transpose(1, 2, 0)) * self.modelConfig.scale
       if mask is not None:
         scores += mask[None, :, :]
 
@@ -144,12 +136,12 @@ class Gemma3NumpyFast:
     return h[-1] @ self.weights["model.embed_tokens.weight"].T
 
   def generate(self, 
-        prompt,
-        max_new_tokens=60,
-        temperature=0.7,
-        top_k=50,
-        top_p=0.9,
-        repetition_penalty=1.1):
+        prompt:str,
+        max_new_tokens:int=60,
+        temperature:float=0.7,
+        top_k:int=50,
+        top_p:float=0.9,
+        repetition_penalty:float=1.1):
     formatted = (
         f"<bos><start_of_turn>user\n{prompt}<end_of_turn>\n<start_of_turn>model\n"
     )
@@ -194,12 +186,12 @@ class Gemma3NumpyFast:
 
   def chat(
         self,
-        max_context_len=2048,
-        max_new_tokens=256,
-        temperature=0.7,
-        top_k=50,
-        top_p=0.9,
-        repetition_penalty=1.1,
+        max_context_len:int=2048,
+        max_new_tokens:int=256,
+        temperature:float=0.7,
+        top_k:int=50,
+        top_p:float=0.9,
+        repetition_penalty:float=1.1,
     ):
       """Boucle de conversation interactive réutilisant le même KVCache d'un tour à l'autre."""
       # On alloue un seul cache pour toute la durée de la conversation

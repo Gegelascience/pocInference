@@ -3,6 +3,25 @@ import struct
 import numpy as np
 
 
+class ModelConfig:
+
+  def __init__(self, config_file_path:str):
+    with open(config_file_path, "r") as f:
+      cfg: dict[str, str | int | float] = json.load(f)
+
+    self.dim: int = int(cfg["hidden_size"])
+    self.n_layers:int = int(cfg["num_hidden_layers"])
+    self.n_heads:int = int(cfg["num_attention_heads"])
+    self.n_kv_heads:int = int(cfg["num_key_value_heads"])
+    self.head_dim:int = int(cfg["head_dim"])
+    self.eps:float = float(cfg["rms_norm_eps"])
+    self.scale = 1.0 / np.sqrt(cfg.get("query_pre_attn_scalar", 256))
+
+
+
+
+
+
 def load_safetensors_bf16_to_fp32(filepath):
   """Lit un fichier .safetensors en pur Python/NumPy et convertit
 
