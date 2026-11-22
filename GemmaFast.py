@@ -28,7 +28,7 @@ class Gemma3NumpyFast:
     norm = np.sqrt(np.mean(x**2, axis=-1, keepdims=True) + self.modelConfig.eps)
     return (x / norm) * (1.0 + weight)
 
-  def gelu(self, x):
+  def gelu(self, x:npt.NDArray[np.float32]):
     return (
         0.5
         * x
@@ -38,11 +38,11 @@ class Gemma3NumpyFast:
         )
     )
 
-  def softmax(self, x):
+  def softmax(self, x:npt.NDArray[np.float32]):
     e_x = np.exp(x - np.max(x, axis=-1, keepdims=True))
     return e_x / np.sum(e_x, axis=-1, keepdims=True)
 
-  def apply_rope(self, x, start_pos, theta_base):
+  def apply_rope(self, x:npt.NDArray[np.float32]|npt.NDArray[np.float64], start_pos, theta_base):
     seq_len = x.shape[0]
     half_dim = self.modelConfig.head_dim // 2
     freqs = 1.0 / (

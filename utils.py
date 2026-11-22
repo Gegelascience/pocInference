@@ -115,7 +115,7 @@ def sample_token(
   # 4. Conversion en probabilités (Softmax numériquement stable)
   logits_shifted = logits - np.max(logits)
   exp_logits = np.exp(logits_shifted)
-  probs = exp_logits / np.sum(exp_logits)
+  probs:npt.NDArray[np.float32] = exp_logits / np.sum(exp_logits)
 
   # 5. Filtrage Top-P (Nucleus Sampling)
   if 0.0 < top_p < 1.0:
@@ -127,7 +127,7 @@ def sample_token(
     # On garde tous les tokens jusqu'à dépasser top_p (en gardant toujours au moins le 1er)
     cutoff_mask = cumulative_probs > top_p
     cutoff_mask[1:] = cutoff_mask[:-1].copy()
-    cutoff_mask = False
+    cutoff_mask[0] = False
 
     # Mise à zéro des tokens éliminés et renormalisation
     indices_to_remove = sorted_indices[cutoff_mask]

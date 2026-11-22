@@ -1,5 +1,5 @@
 import numpy as np
-
+import numpy.typing as npt
 
 class KVCache:
   """Gère le stockage et la mise à jour des clés (K) et valeurs (V)
@@ -16,7 +16,7 @@ class KVCache:
     self.k_cache = np.zeros(shape, dtype=np.float32)
     self.v_cache = np.zeros(shape, dtype=np.float32)
 
-  def update(self, layer_idx:int, k, v):
+  def update(self, layer_idx:int, k:npt.NDArray[np.float32], v:npt.NDArray[np.float32]):
     """Enregistre les nouveaux vecteurs k et v (shape: [num_new_tokens, n_kv_heads, head_dim])
 
     et renvoie l'intégralité de l'historique (de 0 à seq_len + num_new_tokens).

@@ -29,7 +29,7 @@ class Gemma3Tokenizer:
     )
 
     # 3. Règles de fusion BPE : (token_a, token_b) -> rang de priorité
-    self.bpe_ranks = {}
+    self.bpe_ranks:dict[tuple[str, ...], int] = {}
     for rank, merge in enumerate(data["model"]["merges"]):
       # Selon la version de tokenizers, merge est soit une chaîne "a b", soit une liste ["a", "b"]
       pair = tuple(merge.split(" ")) if isinstance(merge, str) else tuple(merge)
@@ -56,7 +56,7 @@ class Gemma3Tokenizer:
 
       # Fusionner toutes les occurrences de best_pair
       first, second = best_pair
-      new_symbols = []
+      new_symbols:list[str] = []
       i = 0
       while i < len(symbols):
         if (

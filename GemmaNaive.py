@@ -27,7 +27,7 @@ class Gemma3Numpy:
     # Spécificité Gemma : le poids appris est centré autour de 0, d'où le (1.0 + weight)
     return (x / norm) * (1.0 + weight)
 
-  def gelu(self, x):
+  def gelu(self, x:npt.NDArray[np.float32]):
     return (
         0.5
         * x
@@ -37,11 +37,11 @@ class Gemma3Numpy:
         )
     )
 
-  def softmax(self, x):
+  def softmax(self, x:npt.NDArray[np.float32]):
     e_x = np.exp(x - np.max(x, axis=-1, keepdims=True))
     return e_x / np.sum(e_x, axis=-1, keepdims=True)
 
-  def apply_rope(self, x, seq_len, theta_base):
+  def apply_rope(self, x:npt.NDArray[np.float32]|npt.NDArray[np.float64], seq_len, theta_base):
     # x shape: (seq_len, n_heads, head_dim)
     half_dim = self.modelConfig.head_dim // 2
     freqs = 1.0 / (
