@@ -1,8 +1,7 @@
 import json
 import struct
-from typing import Any
 import numpy as np
-
+import numpy.typing as npt
 from GemmaTokener import Gemma3Tokenizer
 
 
@@ -31,7 +30,7 @@ def load_safetensors_bf16_to_fp32(filepath:str):
 
   les tenseurs bfloat16 en float32.
   """
-  weights:dict = {}
+  weights:dict[str, npt.NDArray[np.float32]] = {}
 
   with open(filepath, "rb") as f:
     # 1. Les 8 premiers octets donnent la taille de l'en-tête JSON (entier 64 bits little-endian)
@@ -47,8 +46,8 @@ def load_safetensors_bf16_to_fp32(filepath:str):
       if name == "__metadata__":
         continue
 
-      dtype = info["dtype"]
-      shape = info["shape"]
+      dtype:str = info["dtype"]
+      shape:list[int] = info["shape"]
       start_offset, end_offset = info["data_offsets"]
       num_bytes = end_offset - start_offset
 
