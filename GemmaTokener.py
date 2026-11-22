@@ -10,14 +10,14 @@ class Gemma3Tokenizer:
       data = json.load(f)
 
     # 1. Vocabulaire : texte -> ID et ID -> texte
-    self.vocab = data["model"]["vocab"]
+    self.vocab: dict[str,int] = data["model"]["vocab"]
     self.id_to_token = {idx: tok for tok, idx in self.vocab.items()}
 
     # 2. Ajout des tokens spéciaux (added_tokens)
-    self.special_tokens = {}
+    self.special_tokens:dict[str,int] = {}
     for item in data.get("added_tokens", []):
-      content = item["content"]
-      idx = item["id"]
+      content:str = item["content"]
+      idx:int = item["id"]
       self.vocab[content] = idx
       self.id_to_token[idx] = content
       self.special_tokens[content] = idx
@@ -101,7 +101,7 @@ class Gemma3Tokenizer:
 
     return token_ids
 
-  def decode(self, token_ids):
+  def decode(self, token_ids:list[int]):
     """Reconstruit le texte à partir d'une liste d'IDs."""
     pieces:list[str] = []
     byte_buffer = bytearray()

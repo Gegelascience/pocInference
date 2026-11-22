@@ -55,7 +55,7 @@ class Gemma3NumpyFast:
     x1, x2 = x[..., :half_dim], x[..., half_dim:]
     return np.concatenate([x1 * cos - x2 * sin, x1 * sin + x2 * cos], axis=-1)
 
-  def forward(self, token_ids, cache: KVCache):
+  def forward(self, token_ids:list[int], cache: KVCache):
     seq_len = len(token_ids)
     start_pos = cache.seq_len  # Position actuelle lue directement depuis le cache
 

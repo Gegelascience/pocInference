@@ -56,7 +56,7 @@ class Gemma3Numpy:
     return np.concatenate([x1 * cos - x2 * sin, x1 * sin + x2 * cos], axis=-1)
 
   # --- Passe avant (Forward Pass) ---
-  def forward(self, token_ids):
+  def forward(self, token_ids:list[int]):
     seq_len = len(token_ids)
     # 1. Embeddings + mise à l'échelle Gemma
     h = self.weights["model.embed_tokens.weight"][token_ids] * np.sqrt(self.modelConfig.dim)

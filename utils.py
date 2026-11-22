@@ -1,6 +1,10 @@
 import json
 import struct
+from typing import Any
 import numpy as np
+
+from GemmaTokener import Gemma3Tokenizer
+
 
 
 class ModelConfig:
@@ -22,12 +26,12 @@ class ModelConfig:
 
 
 
-def load_safetensors_bf16_to_fp32(filepath):
+def load_safetensors_bf16_to_fp32(filepath:str):
   """Lit un fichier .safetensors en pur Python/NumPy et convertit
 
   les tenseurs bfloat16 en float32.
   """
-  weights = {}
+  weights:dict = {}
 
   with open(filepath, "rb") as f:
     # 1. Les 8 premiers octets donnent la taille de l'en-tête JSON (entier 64 bits little-endian)
@@ -74,11 +78,11 @@ def load_safetensors_bf16_to_fp32(filepath):
 
 def sample_token(
     logits,
-    generated_ids=None,
-    temperature=0.7,
-    top_k=50,
-    top_p=0.9,
-    repetition_penalty=1.1,
+    generated_ids:list[int]=[],
+    temperature:float=0.7,
+    top_k:int=50,
+    top_p:float=0.9,
+    repetition_penalty:float=1.1,
 ):
   """Sélectionne le prochain token à partir des logits bruts en appliquant :
 
@@ -138,11 +142,11 @@ def sample_token(
 class StreamDecoder:
   """Accumule les tokens en streaming jusqu'à former des caractères UTF-8 valides."""
 
-  def __init__(self, tokenizer):
+  def __init__(self, tokenizer:Gemma3Tokenizer):
     self.tokenizer = tokenizer
-    self.pending_tokens = []
+    self.pending_tokens:list[int] = []
 
-  def push(self, token_id):
+  def push(self, token_id:int):
     """Ajoute un nouveau token et renvoie le texte affichable (ou '' si caractère incomplet)."""
     self.pending_tokens.append(token_id)
     text = self.tokenizer.decode(self.pending_tokens)
