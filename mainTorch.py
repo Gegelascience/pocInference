@@ -11,7 +11,7 @@ model = AutoModelForCausalLM.from_pretrained(
 ).eval()
 
 # Historique de la conversation (permet au modèle de se souvenir du contexte)
-messages = []
+messages:list[dict[str,str]] = []
 
 print("\nModèle prêt ! Tapez 'quitter' pour arrêter.\n" + "-" * 45)
 
