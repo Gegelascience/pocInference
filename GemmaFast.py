@@ -3,6 +3,7 @@ from CacheKV import KVCache
 from GemmaTokener import Gemma3Tokenizer
 import numpy as np
 import numpy.typing as npt
+from typing import cast
 from utils import StreamDecoder, load_safetensors_bf16_to_fp32, sample_token, ModelConfig
 
 
@@ -24,17 +25,17 @@ class Gemma3NumpyFast:
     """Crée une instance de KVCache dimensionnée pour ce modèle."""
     return KVCache(self.modelConfig.n_layers, max_seq_len, self.modelConfig.n_kv_heads, self.modelConfig.head_dim)
 
-  def rms_norm(self, x:npt.NDArray[np.float32]| npt.NDArray[np.float64], weight:npt.NDArray[np.float32]):
+  def rms_norm(self, x:npt.NDArray[np.floating], weight:npt.NDArray[np.float32]):
     norm = np.sqrt(np.mean(x**2, axis=-1, keepdims=True) + self.modelConfig.eps)
-    return (x / norm) * (1.0 + weight)
+    return (x / norm) * (np.float32(1.0) + weight)
 
-  def gelu(self, x:npt.NDArray[np.float32]):
+  def gelu(self, x:npt.NDArray[np.floating]):
     return (
-        0.5
+        np.float32(0.5)
         * x
         * (
-            1.0
-            + np.tanh(np.sqrt(2.0 / np.pi) * (x + 0.044715 * np.power(x, 3)))
+            np.float32(1.0)
+            + np.tanh(np.sqrt(np.float32(2.0) / np.pi) * (x + 0.044715 * np.power(x, 3)))
         )
     )
 
@@ -45,7 +46,7 @@ class Gemma3NumpyFast:
   def apply_rope(self, x:npt.NDArray[np.float32]|npt.NDArray[np.float64], start_pos:int, theta_base:float):
     seq_len = x.shape[0]
     half_dim = self.modelConfig.head_dim // 2
-    freqs = 1.0 / (
+    freqs = np.float32(1.0) / (
         theta_base ** (np.arange(0, half_dim, dtype=np.float32) / half_dim)
     )
     pos = np.arange(start_pos, start_pos + seq_len, dtype=np.float32)[:, None]
@@ -59,7 +60,7 @@ class Gemma3NumpyFast:
     seq_len = len(token_ids)
     start_pos = cache.seq_len  # Position actuelle lue directement depuis le cache
 
-    h:npt.NDArray[np.float32] = self.weights["model.embed_tokens.weight"][token_ids] * np.sqrt(self.modelConfig.dim)
+    h:npt.NDArray[np.floating] = self.weights["model.embed_tokens.weight"][token_ids] * np.sqrt(self.modelConfig.dim)
 
     mask = None
     if seq_len > 1:
@@ -85,9 +86,10 @@ class Gemma3NumpyFast:
       k = (h_norm @ self.weights[f"{prefix}.self_attn.k_proj.weight"].T).reshape(
           seq_len, self.modelConfig.n_kv_heads, self.modelConfig.head_dim
       )
-      v = (h_norm @ self.weights[f"{prefix}.self_attn.v_proj.weight"].T).reshape(
+      v = cast(
+    npt.NDArray[np.float32],(h_norm @ self.weights[f"{prefix}.self_attn.v_proj.weight"].T).reshape(
           seq_len, self.modelConfig.n_kv_heads, self.modelConfig.head_dim
-      )
+      ))
 
       # 2. QK-Norm & RoPE
       q = self.rms_norm(q, self.weights[f"{prefix}.self_attn.q_norm.weight"])
