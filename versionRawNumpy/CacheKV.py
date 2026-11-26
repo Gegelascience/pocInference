@@ -1,4 +1,5 @@
 import numpy as np
+import cupy as cp
 import numpy.typing as npt
 
 class KVCache:

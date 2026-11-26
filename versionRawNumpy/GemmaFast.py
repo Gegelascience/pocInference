@@ -2,6 +2,7 @@ import time
 from CacheKV import KVCache
 from GemmaTokener import Gemma3Tokenizer
 import numpy as np
+import cupy as cp
 import numpy.typing as npt
 from typing import cast
 from utils import StreamDecoder, load_safetensors_bf16_to_fp32, sample_token, ModelConfig

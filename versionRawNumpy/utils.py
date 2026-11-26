@@ -1,6 +1,7 @@
 import json
 import struct
 import numpy as np
+import cupy as cp
 import numpy.typing as npt
 from GemmaTokener import Gemma3Tokenizer
 

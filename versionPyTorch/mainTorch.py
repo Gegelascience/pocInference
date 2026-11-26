@@ -2,8 +2,8 @@ import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
 #model_id = "google/gemma-3-1b-it"
-model_id = "../../modelsIA/gemma3_1b"
-
+model_id = "../../../modelsIA/gemma3_1b"
+print("cuda available",torch.cuda.is_available())
 print("Chargement du modèle...")
 tokenizer = AutoTokenizer.from_pretrained(model_id)
 model = AutoModelForCausalLM.from_pretrained(
