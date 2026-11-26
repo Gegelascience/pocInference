@@ -14,10 +14,10 @@ class KVCache:
 
     # Pré-allocation de la mémoire : (n_layers, max_seq_len, n_kv_heads, head_dim)
     shape = (n_layers, max_seq_len, n_kv_heads, head_dim)
-    self.k_cache = np.zeros(shape, dtype=np.float32)
-    self.v_cache = np.zeros(shape, dtype=np.float32)
+    self.k_cache = cp.zeros(shape, dtype=cp.float32)
+    self.v_cache = cp.zeros(shape, dtype=cp.float32)
 
-  def update(self, layer_idx:int, k:npt.NDArray[np.float32], v:npt.NDArray[np.float32]):
+  def update(self, layer_idx:int, k:npt.NDArray[cp.float32], v:npt.NDArray[cp.float32]):
     """Enregistre les nouveaux vecteurs k et v (shape: [num_new_tokens, n_kv_heads, head_dim])
 
     et renvoie l'intégralité de l'historique (de 0 à seq_len + num_new_tokens).

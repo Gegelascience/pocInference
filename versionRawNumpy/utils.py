@@ -19,7 +19,7 @@ class ModelConfig:
     self.n_kv_heads:int = int(cfg["num_key_value_heads"])
     self.head_dim:int = int(cfg["head_dim"])
     self.eps:float = float(cfg["rms_norm_eps"])
-    self.scale = 1.0 / np.sqrt(cfg.get("query_pre_attn_scalar", 256))
+    self.scale = 1.0 / cp.sqrt(cfg.get("query_pre_attn_scalar", 256))
 
 
 
@@ -31,7 +31,7 @@ def load_safetensors_bf16_to_fp32(filepath:str):
 
   les tenseurs bfloat16 en float32.
   """
-  weights:dict[str, npt.NDArray[np.float32]] = {}
+  weights:dict[str, npt.NDArray[cp.float32]] = {}
 
   with open(filepath, "rb") as f:
     # 1. Les 8 premiers octets donnent la taille de l'en-tête JSON (entier 64 bits little-endian)
@@ -59,17 +59,17 @@ def load_safetensors_bf16_to_fp32(filepath:str):
       # 4. Conversion selon le type stocké
       if dtype == "BF16":
         # Lecture en uint16 -> extension en uint32 -> décalage de 16 bits -> vue float32
-        arr_u16 = np.frombuffer(raw_bytes, dtype=np.uint16)
-        arr_fp32 = (arr_u16.astype(np.uint32) << 16).view(np.float32)
+        arr_u16 = cp.frombuffer(raw_bytes, dtype=cp.uint16)
+        arr_fp32 = (arr_u16.astype(cp.uint32) << 16).view(cp.float32)
         weights[name] = arr_fp32.reshape(shape)
 
       elif dtype == "F32":
-        weights[name] = np.frombuffer(raw_bytes, dtype=np.float32).reshape(shape)
+        weights[name] = cp.frombuffer(raw_bytes, dtype=cp.float32).reshape(shape)
 
       elif dtype == "F16":
         weights[name] = (
-            np.frombuffer(raw_bytes, dtype=np.float16)
-            .astype(np.float32)
+            cp.frombuffer(raw_bytes, dtype=cp.float16)
+            .astype(cp.float32)
             .reshape(shape)
         )
 
@@ -77,7 +77,7 @@ def load_safetensors_bf16_to_fp32(filepath:str):
 
 
 def sample_token(
-    logits:npt.NDArray[np.float32],
+    logits:npt.NDArray[cp.float32],
     generated_ids:list[int]=[],
     temperature:float=0.7,
     top_k:int=50,
@@ -89,41 +89,41 @@ def sample_token(
   repetition_penalty -> temperature -> top_k -> top_p -> tirage aléatoire.
   """
   # On travaille sur une copie en float32 pour ne pas modifier le tableau d'origine
-  logits = logits.astype(np.float32).copy()
+  logits = logits.astype(cp.float32).copy()
 
   # 1. Pénalité de répétition sur les tokens déjà vus
   if generated_ids and repetition_penalty != 1.0:
     unique_ids = list(set(generated_ids))
     scores = logits[unique_ids]
     # Si le score est positif, on le divise ; s'il est négatif, on le multiplie
-    logits[unique_ids] = np.where(
+    logits[unique_ids] = cp.where(
         scores > 0, scores / repetition_penalty, scores * repetition_penalty
     )
 
   # Si température <= 0, on retombe sur le choix glouton (déterministe)
   if temperature <= 0.0:
-    return int(np.argmax(logits))
+    return int(cp.argmax(logits))
 
   # 2. Application de la température
   logits = logits / temperature
 
   # 3. Filtrage Top-K (on ne garde que les K plus grands logits)
   if top_k > 0 and top_k < len(logits):
-    # np.argpartition trouve les K plus grands éléments en temps linéaire O(N)
-    kth_val = np.partition(logits, -top_k)[-top_k]
+    # cp.argpartition trouve les K plus grands éléments en temps linéaire O(N)
+    kth_val = cp.partition(logits, -top_k)[-top_k]
     logits[logits < kth_val] = -float("inf")
 
   # 4. Conversion en probabilités (Softmax numériquement stable)
-  logits_shifted = logits - np.max(logits)
-  exp_logits = np.exp(logits_shifted)
-  probs:npt.NDArray[np.float32] = exp_logits / np.sum(exp_logits)
+  logits_shifted = logits - cp.max(logits)
+  exp_logits = cp.exp(logits_shifted)
+  probs:npt.NDArray[cp.float32] = exp_logits / cp.sum(exp_logits)
 
   # 5. Filtrage Top-P (Nucleus Sampling)
   if 0.0 < top_p < 1.0:
     # Tri des probabilités par ordre décroissant
-    sorted_indices = np.argsort(probs)[::-1]
+    sorted_indices = cp.argsort(probs)[::-1]
     sorted_probs = probs[sorted_indices]
-    cumulative_probs = np.cumsum(sorted_probs)
+    cumulative_probs = cp.cumsum(sorted_probs)
 
     # On garde tous les tokens jusqu'à dépasser top_p (en gardant toujours au moins le 1er)
     cutoff_mask = cumulative_probs > top_p
@@ -133,10 +133,10 @@ def sample_token(
     # Mise à zéro des tokens éliminés et renormalisation
     indices_to_remove = sorted_indices[cutoff_mask]
     probs[indices_to_remove] = 0.0
-    probs /= np.sum(probs)
+    probs /= cp.sum(probs)
 
   # 6. Tirage pondéré aléatoire selon la distribution finale
-  return int(np.random.choice(len(probs), p=probs))
+  return int(cp.random.choice(len(probs),size=1, p=probs)[0])
 
 
 class StreamDecoder:

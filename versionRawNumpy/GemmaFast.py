@@ -26,53 +26,53 @@ class Gemma3NumpyFast:
     """Crée une instance de KVCache dimensionnée pour ce modèle."""
     return KVCache(self.modelConfig.n_layers, max_seq_len, self.modelConfig.n_kv_heads, self.modelConfig.head_dim)
 
-  def rms_norm(self, x:npt.NDArray[np.floating], weight:npt.NDArray[np.float32]):
-    norm = np.sqrt(np.mean(x**2, axis=-1, keepdims=True) + self.modelConfig.eps)
-    return (x / norm) * (np.float32(1.0) + weight)
+  def rms_norm(self, x:npt.NDArray[cp.floating], weight:npt.NDArray[cp.float32]):
+    norm = cp.sqrt(cp.mean(x**2, axis=-1, keepdims=True) + self.modelConfig.eps)
+    return (x / norm) * (cp.float32(1.0) + weight)
 
-  def gelu(self, x:npt.NDArray[np.floating]):
+  def gelu(self, x:npt.NDArray[cp.floating]):
     return (
-        np.float32(0.5)
+        cp.float32(0.5)
         * x
         * (
-            np.float32(1.0)
-            + np.tanh(np.sqrt(np.float32(2.0) / np.pi) * (x + 0.044715 * np.power(x, 3)))
+            cp.float32(1.0)
+            + cp.tanh(cp.sqrt(cp.float32(2.0) / cp.pi) * (x + 0.044715 * cp.power(x, 3)))
         )
     )
 
-  def softmax(self, x:npt.NDArray[np.float32]):
-    e_x = np.exp(x - np.max(x, axis=-1, keepdims=True))
-    return e_x / np.sum(e_x, axis=-1, keepdims=True)
+  def softmax(self, x:npt.NDArray[cp.float32]):
+    e_x = cp.exp(x - cp.max(x, axis=-1, keepdims=True))
+    return e_x / cp.sum(e_x, axis=-1, keepdims=True)
 
-  def apply_rope(self, x:npt.NDArray[np.float32]|npt.NDArray[np.float64], start_pos:int, theta_base:float):
+  def apply_rope(self, x:npt.NDArray[cp.float32]|npt.NDArray[cp.float64], start_pos:int, theta_base:float):
     seq_len = x.shape[0]
     half_dim = self.modelConfig.head_dim // 2
-    freqs = np.float32(1.0) / (
-        theta_base ** (np.arange(0, half_dim, dtype=np.float32) / half_dim)
+    freqs = cp.float32(1.0) / (
+        theta_base ** (cp.arange(0, half_dim, dtype=cp.float32) / half_dim)
     )
-    pos = np.arange(start_pos, start_pos + seq_len, dtype=np.float32)[:, None]
+    pos = cp.arange(start_pos, start_pos + seq_len, dtype=cp.float32)[:, None]
     angles = pos * freqs[None, :]
 
-    cos, sin = np.cos(angles)[:, None, :], np.sin(angles)[:, None, :]
+    cos, sin = cp.cos(angles)[:, None, :], cp.sin(angles)[:, None, :]
     x1, x2 = x[..., :half_dim], x[..., half_dim:]
-    return np.concatenate([x1 * cos - x2 * sin, x1 * sin + x2 * cos], axis=-1)
+    return cp.concatenate([x1 * cos - x2 * sin, x1 * sin + x2 * cos], axis=-1)
 
   def forward(self, token_ids:list[int], cache: KVCache):
     seq_len = len(token_ids)
     start_pos = cache.seq_len  # Position actuelle lue directement depuis le cache
 
-    h:npt.NDArray[np.floating] = self.weights["model.embed_tokens.weight"][token_ids] * np.sqrt(self.modelConfig.dim)
+    h:npt.NDArray[cp.floating] = self.weights["model.embed_tokens.weight"][token_ids] * cp.sqrt(self.modelConfig.dim)
 
     mask = None
     if seq_len > 1:
       # Partie gauche (tokens déjà en cache) : 0.0 (tout est visible)
-      past_mask = np.zeros((seq_len, start_pos), dtype=np.float32)
+      past_mask = cp.zeros((seq_len, start_pos), dtype=cp.float32)
       # Partie droite (nouveaux tokens) : masque triangulaire supérieur à -1e9
-      curr_mask = np.triu(
-          np.full((seq_len, seq_len), -1e9, dtype=np.float32), k=1
+      curr_mask = cp.triu(
+          cp.full((seq_len, seq_len), -1e9, dtype=cp.float32), k=1
       )
       # Concaténation -> shape (seq_len, start_pos + seq_len)
-      mask = np.concatenate([past_mask, curr_mask], axis=1)
+      mask = cp.concatenate([past_mask, curr_mask], axis=1)
 
     for i in range(self.modelConfig.n_layers):
       prefix = f"model.layers.{i}"
@@ -88,7 +88,7 @@ class Gemma3NumpyFast:
           seq_len, self.modelConfig.n_kv_heads, self.modelConfig.head_dim
       )
       v = cast(
-    npt.NDArray[np.float32],(h_norm @ self.weights[f"{prefix}.self_attn.v_proj.weight"].T).reshape(
+    npt.NDArray[cp.float32],(h_norm @ self.weights[f"{prefix}.self_attn.v_proj.weight"].T).reshape(
           seq_len, self.modelConfig.n_kv_heads, self.modelConfig.head_dim
       ))
 
@@ -104,8 +104,8 @@ class Gemma3NumpyFast:
       k, v = cache.update(i, k, v)
 
       # 4. Multi-Query Attention
-      k_rep = np.repeat(k, self.modelConfig.n_heads // self.modelConfig.n_kv_heads, axis=1)
-      v_rep = np.repeat(v, self.modelConfig.n_heads // self.modelConfig.n_kv_heads, axis=1)
+      k_rep = cp.repeat(k, self.modelConfig.n_heads // self.modelConfig.n_kv_heads, axis=1)
+      v_rep = cp.repeat(v, self.modelConfig.n_heads // self.modelConfig.n_kv_heads, axis=1)
 
       scores = (q.transpose(1, 0, 2) @ k_rep.transpose(1, 2, 0)) * self.modelConfig.scale
       if mask is not None:
